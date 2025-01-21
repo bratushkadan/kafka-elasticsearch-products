@@ -23,7 +23,7 @@ func (c *AppConf) ClusterUrls() []string {
 func NewAppConf() AppConf {
 	return AppConf{
 		clusterUrls:       []string{"localhost:9092"},
-		topicName:         "foo",
-		consumerGroupName: "go-foo-consumer-group",
+		topicName:         "floral.products",
+		consumerGroupName: "floral.products.elasticsearch-reader",
 	}
 }
