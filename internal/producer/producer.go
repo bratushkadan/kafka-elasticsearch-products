@@ -14,15 +14,21 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
+var sellers = []string{"Danila", "Andrey", "Larisa"}
+
 func getRandProduct() pkg.Product {
 	name := gofakeit.ProductName()
 	cat := gofakeit.ProductCategory()
 	desc := gofakeit.ProductDescription()
 
+	seller := sellers[int(rand.Int32())%len(sellers)]
+
 	return pkg.Product{
+		Id:          pkg.GenId(),
 		Name:        name,
 		Description: desc,
 		Category:    cat,
+		Seller:      seller,
 	}
 }
 
@@ -70,7 +76,7 @@ func NewKafkaClient() (*kgo.Client, error) {
 }
 
 func Run() {
-	ch, cancel := randTickerMs(1000, 2000)
+	ch, cancel := randTickerMs(200, 500)
 	defer cancel()
 
 	cl, err := NewKafkaClient()
@@ -85,7 +91,7 @@ func Run() {
 		var buf bytes.Buffer
 		product := getRandProduct()
 		_ = json.NewEncoder(&buf).Encode(product)
-		record := &kgo.Record{Topic: "foo", Value: buf.Bytes()}
+		record := &kgo.Record{Topic: config.NewAppConf().TopicName(), Value: buf.Bytes()}
 		// This is **Asynchronous** produce! For synchronous produce use cl.ProduceSync.
 		cl.Produce(ctx, record, func(_ *kgo.Record, err error) {
 			if err != nil {

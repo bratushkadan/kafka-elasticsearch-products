@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"kafka/svcs/config"
 	"kafka/svcs/pkg"
+	"log"
+	"net/http"
 
 	"github.com/twmb/franz-go/pkg/kgo"
 )
@@ -52,6 +55,8 @@ func Run() {
 			fmt.Println(string(record.Value), "from an iterator!")
 		} */
 
+		var products []pkg.Product
+
 		fetches.EachPartition(func(p kgo.FetchTopicPartition) {
 			// 2. Range iteration way to iterate over Records
 			for _, record := range p.Records {
@@ -62,6 +67,7 @@ func Run() {
 				}
 
 				fmt.Printf("Read product message from a Kafka topic: %+v\n", product)
+				products = append(products, product)
 			}
 
 			// 3. We can even use a second callback!
@@ -71,9 +77,69 @@ func Run() {
 			}) */
 		})
 
-		err := cl.CommitUncommittedOffsets(ctx)
+		resp, err := elasticSearchBulkInsert(context.Background(), products)
+		if err != nil {
+			log.Printf("failed to bulk insert data into elasticsearch: %v", err)
+			log.Print(string(resp))
+			continue
+		}
+		fmt.Println("bulk inserted to elasticsearch" + string(resp))
+
+		fmt.Println("commit topic offsets")
+		err = cl.CommitUncommittedOffsets(ctx)
 		if err != nil {
 			fmt.Printf("failed to commit offsets: %v\n", err)
 		}
 	}
+}
+
+func elasticSearchBulkInsert(ctx context.Context, products []pkg.Product) ([]byte, error) {
+	var b bytes.Buffer
+
+	for _, p := range products {
+		b.WriteString(fmt.Sprintf(`{"index": {"_index": "floral-products", "_id": "%s"}}`, p.Id))
+		b.WriteByte('\n')
+		err := json.NewEncoder(&b).Encode(&struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Category    string `json:"category,omitempty"`
+			Seller      string `json:"seller"`
+		}{
+			Name:        p.Name,
+			Description: p.Description,
+			Category:    p.Category,
+			Seller:      p.Seller,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to encode product record: %w", err)
+		}
+
+		b.WriteByte('\n')
+	}
+	b.WriteByte('\n')
+
+	req, err := http.NewRequestWithContext(ctx, "POST", "http://127.0.0.1:9200/_bulk", &b)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create http request to perform bulk insert: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/x-ndjson")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode > 399 {
+		return data, fmt.Errorf("request error")
+	}
+
+	return data, nil
 }
