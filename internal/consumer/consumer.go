@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"kafka/svcs/config"
 	"kafka/svcs/pkg"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
 )
@@ -23,7 +25,12 @@ func NewKafkaClient() (*kgo.Client, error) {
 		kgo.SeedBrokers(appConf.ClusterUrls()...),
 		kgo.ConsumerGroup(appConf.ConsumerGroupName()),
 		kgo.ConsumeTopics(appConf.TopicName()),
+		kgo.DisableAutoCommit(),
+		// kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
+		kgo.SessionTimeout(3*time.Second),
+		kgo.HeartbeatInterval(1500*time.Millisecond),
 	)
+
 	if err != nil {
 		return nil, err
 	}
@@ -39,27 +46,35 @@ func Run() {
 	}
 	defer cl.Close()
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := cl.Ping(ctx); err != nil {
+		log.Fatal(fmt.Errorf("failed to ping brokers: %w", err))
+	}
+	ctx = context.Background()
 
-	fmt.Println("Consumer starts polling...")
 	for {
+		log.Print("fetching")
+		// offsets := cl.UncommittedOffsets()
+		// if offsets != nil {
+		// 	offsets["floral.products"][0] = kgo.NewOffset().At(-2).EpochOffset()
+		// }
+		// log.Print(offsets, cl.UncommittedOffsets())
+		// cl.SetOffsets(offsets)
+
 		fetches := cl.PollFetches(ctx)
+		if fetches.IsClientClosed() {
+			break
+		}
 		if errs := fetches.Errors(); len(errs) > 0 {
 			panic(fmt.Sprint(errs))
 		}
 
-		// 1. First way to iterate over fetches
-		/* iter := fetches.RecordIter()
-		for !iter.Done() {
-			record := iter.Next()
-			fmt.Println(string(record.Value), "from an iterator!")
-		} */
-
 		var products []pkg.Product
 
 		fetches.EachPartition(func(p kgo.FetchTopicPartition) {
-			// 2. Range iteration way to iterate over Records
 			for _, record := range p.Records {
+				log.Printf("topic %s partition %d offset %d \n", p.Topic, p.Partition, record.Offset)
 				var product pkg.Product
 				if err := json.NewDecoder(bytes.NewReader(record.Value)).Decode(&product); err != nil {
 					fmt.Printf("failed to unmarshal message from topic to a product: %v\n", err)
@@ -69,12 +84,6 @@ func Run() {
 				fmt.Printf("Read product message from a Kafka topic: %+v\n", product)
 				products = append(products, product)
 			}
-
-			// 3. We can even use a second callback!
-
-			/* p.EachRecord(func(record *kgo.Record) {
-				fmt.Println(string(record.Value), "from a second callback!")
-			}) */
 		})
 
 		resp, err := elasticSearchBulkInsert(context.Background(), products)
@@ -94,6 +103,8 @@ func Run() {
 }
 
 func elasticSearchBulkInsert(ctx context.Context, products []pkg.Product) ([]byte, error) {
+	return nil, errors.New("fake error to make elastiSeachBulkInsert fail")
+
 	var b bytes.Buffer
 
 	for _, p := range products {

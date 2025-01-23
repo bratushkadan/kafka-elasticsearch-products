@@ -270,7 +270,8 @@ curl -X POST http://localhost:9200/floral-products/_search -H 'Content-Type: app
 ## Prepare Kafka
 
 ```bash
-docker run -d --name kafka-broker -p 9092:9092 apache/kafka:3.7.2
+cd kafka
+docker-compose up -d
 ```
 
 ### Create Topics

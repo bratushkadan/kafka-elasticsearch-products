@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"kafka/svcs/config"
 	"kafka/svcs/pkg"
+	"log"
 	"math/rand/v2"
 	"time"
 
@@ -76,7 +77,7 @@ func NewKafkaClient() (*kgo.Client, error) {
 }
 
 func Run() {
-	ch, cancel := randTickerMs(200, 500)
+	ch, cancel := randTickerMs(2000, 5000)
 	defer cancel()
 
 	cl, err := NewKafkaClient()
@@ -85,7 +86,13 @@ func Run() {
 	}
 	defer cl.Close()
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := cl.Ping(ctx); err != nil {
+		log.Fatal(fmt.Errorf("failed to ping brokers: %w", err))
+	}
+
+	ctx = context.Background()
 
 	for _ = range ch {
 		var buf bytes.Buffer
@@ -93,7 +100,10 @@ func Run() {
 		_ = json.NewEncoder(&buf).Encode(product)
 		record := &kgo.Record{Topic: config.NewAppConf().TopicName(), Value: buf.Bytes()}
 		// This is **Asynchronous** produce! For synchronous produce use cl.ProduceSync.
-		cl.Produce(ctx, record, func(_ *kgo.Record, err error) {
+		log.Print("trying to produce...")
+		innerCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		cl.Produce(innerCtx, record, func(_ *kgo.Record, err error) {
+			defer cancel()
 			if err != nil {
 				fmt.Printf("record had a produce error: %v\n", err)
 			} else {
