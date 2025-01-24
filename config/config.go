@@ -14,7 +14,7 @@ func (c AppConf) ConsumerGroupName() string {
 }
 
 // Aka "seeds" (either in franz-go or in Kafka - I have no idea).
-func (c AppConf) ClusterUrls() []string {
+func (c AppConf) BrokerUrls() []string {
 	urls := make([]string, len(c.clusterUrls))
 	copy(urls, c.clusterUrls)
 	return urls

@@ -1,3 +1,5 @@
+github.com/bratushkadan/back-goff v0.1.1 h1:uCmkOoaIYMC3ZZ5wuogkTUJrkaOH3/guYdO2sO1cdC8=
+github.com/bratushkadan/back-goff v0.1.1/go.mod h1:OxjT+hap9aDhcsJCTxGdnh1wZ+xp7F2NXLzglowyDSs=
 github.com/brianvoe/gofakeit/v7 v7.1.2 h1:vSKaVScNhWVpf1rlyEKSvO8zKZfuDtGqoIHT//iNNb8=
 github.com/brianvoe/gofakeit/v7 v7.1.2/go.mod h1:QXuPeBw164PJCzCUZVmgpgHJ3Llj49jSLVkKPMtxtxA=
 github.com/klauspost/compress v1.17.11 h1:In6xLpyWOi1+C7tXUUWv2ot1QvBjxevKAaI6IXrJmUc=

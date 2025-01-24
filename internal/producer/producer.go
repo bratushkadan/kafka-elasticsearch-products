@@ -65,7 +65,7 @@ func NewKafkaClient() (*kgo.Client, error) {
 	// One client can both produce and consume!
 	// Consuming can either be direct (no consumer group), or through a group. Below, we use a group.
 	cl, err := kgo.NewClient(
-		kgo.SeedBrokers(appConf.ClusterUrls()...),
+		kgo.SeedBrokers(appConf.BrokerUrls()...),
 		// kgo.ConsumerGroup("my-group-identifier"),
 		// kgo.ConsumeTopics("foo"),
 	)

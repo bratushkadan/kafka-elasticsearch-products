@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/bratushkadan/back-goff/pkg/backoff"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
@@ -22,11 +23,10 @@ func NewKafkaClient() (*kgo.Client, error) {
 	// One client can both produce and consume!
 	// Consuming can either be direct (no consumer group), or through a group. Below, we use a group.
 	cl, err := kgo.NewClient(
-		kgo.SeedBrokers(appConf.ClusterUrls()...),
+		kgo.SeedBrokers(appConf.BrokerUrls()...),
 		kgo.ConsumerGroup(appConf.ConsumerGroupName()),
 		kgo.ConsumeTopics(appConf.TopicName()),
 		kgo.DisableAutoCommit(),
-		// kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
 		kgo.SessionTimeout(3*time.Second),
 		kgo.HeartbeatInterval(1500*time.Millisecond),
 	)
@@ -36,7 +36,6 @@ func NewKafkaClient() (*kgo.Client, error) {
 	}
 
 	return cl, nil
-
 }
 
 func Run() {
@@ -53,16 +52,16 @@ func Run() {
 	}
 	ctx = context.Background()
 
+	backoff := backoff.New(backoff.Conf{BaseStart: time.Second, BaseMax: 30 * time.Second, JitterMin: 200 * time.Millisecond, JitterMax: 1 * time.Second, Factor: 2.0})
 	for {
 		log.Print("fetching")
-		// offsets := cl.UncommittedOffsets()
-		// if offsets != nil {
-		// 	offsets["floral.products"][0] = kgo.NewOffset().At(-2).EpochOffset()
-		// }
-		// log.Print(offsets, cl.UncommittedOffsets())
-		// cl.SetOffsets(offsets)
 
+		// startOffsets := cl.UncommittedOffsets()
+		_ = cl.UncommittedOffsets()
+		// log.Printf("before poll fetches cl.MarkedOffsets() = %+v\n", cl.MarkedOffsets())
 		fetches := cl.PollFetches(ctx)
+		fmt.Printf("commited offsets: %+v\n", cl.CommittedOffsets())
+		// log.Printf("after poll fetches cl.MarkedOffsets() = %+v\n", cl.MarkedOffsets())
 		if fetches.IsClientClosed() {
 			break
 		}
@@ -90,8 +89,15 @@ func Run() {
 		if err != nil {
 			log.Printf("failed to bulk insert data into elasticsearch: %v", err)
 			log.Print(string(resp))
+			// Reset offsets to retry fetching data that couldn't be processed.
+			cl.SetOffsets(cl.CommittedOffsets())
+
+			b := backoff.GetIncr()
+			log.Printf("Retrying poll after %.2fs", b.Seconds())
+			time.Sleep(b)
 			continue
 		}
+		backoff.Reset()
 		fmt.Println("bulk inserted to elasticsearch" + string(resp))
 
 		fmt.Println("commit topic offsets")
